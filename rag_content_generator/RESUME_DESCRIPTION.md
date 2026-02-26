@@ -1,24 +1,14 @@
-# 📄 Resume Project Description (10 Lines)
+# 📄 Resume Project Description (Updated)
 
-**AI-Based Document Understanding & Content Generation System using RAG**
+**RAG Content Studio — AI-Based Document Understanding & Content Generation System**
 
-• Developed a complete Retrieval-Augmented Generation (RAG) system that processes PDF, TXT, and MD documents to generate accurate, document-grounded content including summaries, blog posts, and LinkedIn content.
-
-• Implemented semantic search using Sentence Transformers for embeddings and FAISS vector database for efficient similarity search, reducing AI hallucinations by grounding responses in actual document content.
-
-• Built a Streamlit web interface with 5 content generation modules (Summary, Blog Post, LinkedIn Post, Image Generation, Custom Query) and a command-line interface for automation.
-
-• Designed and implemented document processing pipeline with intelligent chunking (512 words, 64 overlap), batch embedding generation, and memory-optimized architecture handling documents up to 500K characters.
-
-• Integrated multiple open-source AI models (Qwen2.5-0.5B-Instruct for text generation, Stable Diffusion v1.5 for images) with local execution, ensuring 100% privacy and zero API costs.
-
-• Implemented source attribution system that tracks and displays document sources and chunk references for generated content, enhancing transparency and verifiability.
-
-• Optimized system performance with batch processing, memory management techniques, and configurable parameters (max tokens, top-K chunks) for different use cases.
-
-• Created comprehensive documentation including README, setup scripts, and troubleshooting guides, enabling easy deployment and usage.
-
-• Technologies: Python, Streamlit, PyTorch, Transformers, Sentence Transformers, FAISS, Stable Diffusion, pypdf, NumPy.
-
-• Result: A production-ready, API-free RAG system that processes documents locally, generates accurate content, and works completely offline after initial setup.
-
+- Built an end-to-end local RAG platform that ingests PDF/TXT/MD files and generates document-grounded summaries, blog intros, LinkedIn posts, custom Q&A, and image outputs.
+- Implemented fast semantic retrieval with Sentence Transformers + FAISS and added optional reranking for quality-focused retrieval.
+- Designed a dual-path generation architecture: **Fast Mode** (extractive/low-latency) and standard generative mode for richer outputs.
+- Added structured, citation-aware summaries with chunk-level source attribution for transparency and traceability.
+- Developed a modern Streamlit frontend with professional UX, Light/Dark theme toggle, and performance-centric controls.
+- Integrated LinkedIn OAuth workflow with direct posting support from within the app.
+- Optimized low-resource execution using lightweight default models (`Qwen2.5-0.5B`, `all-MiniLM-L6-v2`, `sd-turbo`).
+- Implemented robust error handling for model loading, Windows file-lock edge cases, and fallback behavior for image generation.
+- Created modular architecture (`rag_local.py`, `app.py`, `linkedin_integration.py`) for maintainability and extensibility.
+- Tech stack: Python, Streamlit, Transformers, Sentence-Transformers, FAISS, PyTorch, Diffusers, pypdf, NumPy.

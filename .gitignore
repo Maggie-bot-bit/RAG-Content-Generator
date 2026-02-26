@@ -1,1 +1,11 @@
-__pycache__/ 
+# Secrets
+.env
+.linkedin_token.json
+rag_content_generator/.env
+rag_content_generator/.linkedin_token.json
+
+# RAG storage files
+rag_content_generator/rag_store/
+
+# Python cache
+__pycache__/

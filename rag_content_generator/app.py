@@ -13,6 +13,15 @@ from pathlib import Path
 import tempfile
 import os
 from rag_local import build_store, run_query, load_store, retrieve, generate_image_from_context
+from linkedin_integration import (
+    get_config as li_get_config,
+    config_ready as li_config_ready,
+    build_auth_url as li_build_auth_url,
+    exchange_code_for_token as li_exchange_code,
+    get_access_token as li_get_access_token,
+    post_text as li_post_text,
+    new_state as li_new_state,
+)
 import json
 
 # Page configuration
@@ -23,120 +32,77 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better UI - Improved visibility with light sidebar
-st.markdown("""
-<style>
-    /* Force light theme for better visibility */
-    .stApp {
-        background-color: #ffffff;
-    }
-    
-    /* Sidebar - Light background with good contrast */
-    section[data-testid="stSidebar"] {
-        background-color: #f8f9fa !important;
-        border-right: 1px solid #dee2e6;
-    }
-    
-    section[data-testid="stSidebar"] > div {
-        background-color: #f8f9fa !important;
-    }
-    
-    /* Sidebar text - dark for visibility */
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3,
-    section[data-testid="stSidebar"] h4,
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] div {
-        color: #212529 !important;
-    }
-    
-    /* Sidebar input fields */
-    section[data-testid="stSidebar"] input,
-    section[data-testid="stSidebar"] textarea {
-        background-color: #ffffff !important;
-        color: #212529 !important;
-        border: 1px solid #ced4da !important;
-    }
-    
-    /* Sidebar file uploader */
-    section[data-testid="stSidebar"] .uploadedFile {
-        background-color: #ffffff !important;
-        color: #212529 !important;
-        border: 1px solid #ced4da !important;
-    }
-    
-    /* Sidebar buttons */
-    section[data-testid="stSidebar"] button {
-        background-color: #1f77b4 !important;
-        color: #ffffff !important;
-        border: none !important;
-    }
-    
-    section[data-testid="stSidebar"] button:hover {
-        background-color: #1565a0 !important;
-    }
-    
-    /* Sidebar info boxes */
-    section[data-testid="stSidebar"] .stSuccess,
-    section[data-testid="stSidebar"] .stInfo,
-    section[data-testid="stSidebar"] .stWarning,
-    section[data-testid="stSidebar"] .stError {
-        background-color: #ffffff !important;
-        border: 1px solid #dee2e6 !important;
-        color: #212529 !important;
-    }
-    
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4 !important;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #333333 !important;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .stButton>button {
-        width: 100%;
-        background-color: #1f77b4;
-        color: white;
-        font-weight: bold;
-    }
-    .info-box {
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        background-color: #f8f9fa;
-        border-left: 4px solid #1f77b4;
-        color: #212529 !important;
-        margin: 1rem 0;
-    }
-    .info-box h3, .info-box h4 {
-        color: #1f77b4 !important;
-    }
-    .info-box p, .info-box li {
-        color: #212529 !important;
-    }
-    /* Ensure all text is visible */
-    p, div, span, h1, h2, h3, h4, h5, h6 {
-        color: #212529 !important;
-    }
-    /* Streamlit default text */
-    .stMarkdown, .stText {
-        color: #212529 !important;
-    }
-    /* Code blocks */
-    pre {
-        background-color: #f8f9fa;
-        color: #212529;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Professional aesthetic UI theme (Light/Dark)
+if 'theme_mode' not in st.session_state:
+    st.session_state['theme_mode'] = 'Light'
+
+def apply_theme(theme_mode: str):
+    is_dark = theme_mode == 'Dark'
+    if is_dark:
+        bg = '#0b1020'; card = '#111a2e'; ink = '#e6edff'; muted = '#94a3b8'; line = '#24324d'
+        brand = '#22d3ee'; brand2 = '#a78bfa'; app_grad = 'radial-gradient(circle at top right, #0b1228 0%, #0b1020 45%, #090f1d 100%)'
+        side_grad = 'linear-gradient(180deg, #0f172a 0%, #0b1220 100%)'
+        code_bg = '#0f172a'; code_ink = '#e2e8f0'
+    else:
+        bg = '#f4f7fb'; card = '#ffffff'; ink = '#0f172a'; muted = '#475569'; line = '#e2e8f0'
+        brand = '#2563eb'; brand2 = '#7c3aed'; app_grad = 'radial-gradient(circle at top right, #eef2ff 0%, #f4f7fb 40%, #f8fafc 100%)'
+        side_grad = 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'
+        code_bg = '#f8fafc'; code_ink = '#0f172a'
+
+    st.markdown(f"""
+    <style>
+        :root {{ --bg:{bg}; --card:{card}; --ink:{ink}; --muted:{muted}; --brand:{brand}; --brand2:{brand2}; --line:{line}; }}
+        html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stMain"], [data-testid="stMainBlockContainer"] {{
+            background: {app_grad} !important;
+            background-color: var(--bg) !important;
+        }}
+        [data-testid="stHeader"] {{ background: transparent !important; }}
+        section[data-testid="stSidebar"] {{ background: {side_grad} !important; border-right: 1px solid var(--line); }}
+        .main-header {{ font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em;
+            background: linear-gradient(90deg, var(--brand), var(--brand2)); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent; text-align: center; margin-bottom: .4rem; }}
+        .sub-header {{ font-size: 1.06rem; color: var(--muted) !important; text-align: center; margin-bottom: 1.2rem; }}
+        .stButton>button {{ width: 100%; border: 0 !important; border-radius: 12px !important;
+            background: linear-gradient(90deg, var(--brand), var(--brand2)) !important; color: #fff !important;
+            font-weight: 700 !important; box-shadow: 0 8px 18px rgba(37,99,235,.25); }}
+        /* Lighter style for link buttons like Connect LinkedIn */
+        [data-testid="stLinkButton"] a {{
+            width: 100%;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            padding: .55rem .8rem;
+            text-decoration: none !important;
+            font-weight: 700;
+            border: 1px solid var(--line);
+            background: linear-gradient(90deg, #e0ecff, #ede9fe) !important;
+            color: #1e293b !important;
+        }}
+        .stTabs [data-baseweb="tab-list"] {{ gap: .35rem; }}
+        .stTabs [data-baseweb="tab"] {{ border-radius: 10px; padding: .5rem .85rem; }}
+        .info-box {{ padding: 1.1rem 1.2rem; border-radius: 14px; background: var(--card);
+            border: 1px solid var(--line); box-shadow: 0 10px 25px rgba(15,23,42,.10); color: var(--ink) !important; margin: 0.8rem 0; }}
+        .output-card {{ background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; line-height: 1.65; }}
+        .footer-card {{ background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }}
+        p, div, span, h1, h2, h3, h4, h5, h6, label {{ color: var(--ink) !important; }}
+        .stAlert {{ border-radius: 12px !important; }}
+        pre {{ background-color: {code_bg}; color: {code_ink}; border: 1px solid var(--line); border-radius: 10px; }}
+
+        /* File uploader styling */
+        [data-testid="stFileUploader"],
+        [data-testid="stFileUploader"] > div,
+        [data-testid="stFileUploader"] section,
+        [data-testid="stFileUploaderDropzone"],
+        [data-testid="stFileUploaderDropzone"] * {{
+            background: var(--card) !important;
+            color: var(--ink) !important;
+            border-color: var(--line) !important;
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
+apply_theme(st.session_state['theme_mode'])
 
 # Initialize session state
 if 'store_dir' not in st.session_state:
@@ -151,15 +117,97 @@ if 'meta' not in st.session_state:
     st.session_state['meta'] = None
 if 'encoder' not in st.session_state:
     st.session_state['encoder'] = None
+if 'li_last_post' not in st.session_state:
+    st.session_state['li_last_post'] = ""
+if 'li_state' not in st.session_state:
+    st.session_state['li_state'] = ""
+if 'li_auth_msg' not in st.session_state:
+    st.session_state['li_auth_msg'] = ""
+if 'li_connected' not in st.session_state:
+    st.session_state['li_connected'] = False
+
+# Handle LinkedIn OAuth callback (when redirected back with ?code=...)
+try:
+    q = st.query_params
+    if 'code' in q:
+        cfg = li_get_config()
+        if li_config_ready(cfg):
+            code_val = q.get('code')
+            if isinstance(code_val, list):
+                code_val = code_val[0]
+            if code_val and code_val != st.session_state.get('li_last_code'):
+                li_exchange_code(cfg, code_val)
+                st.session_state['li_last_code'] = code_val
+                st.session_state['li_connected'] = True
+                st.session_state['li_auth_msg'] = "✅ LinkedIn connected successfully."
+except Exception as _e:
+    st.session_state['li_auth_msg'] = f"❌ LinkedIn auth failed: {_e}"
 
 # Header
-st.markdown('<h1 class="main-header">🤖 AI-Based Document Understanding & Content Generation</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Upload documents and generate summaries, blog posts, LinkedIn content, and images using RAG</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">🤖 RAG Content Studio</h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Professional document intelligence for summaries, blog drafts, LinkedIn posts, and visual outputs.</p>', unsafe_allow_html=True)
+
+st.markdown("""
+<div class="info-box" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <div><b>⚡ Fast Mode</b><br><span style='color:var(--muted)'>Low-latency content generation</span></div>
+  <div><b>🔒 Local-first</b><br><span style='color:var(--muted)'>Privacy-friendly processing</span></div>
+  <div><b>📎 Traceable</b><br><span style='color:var(--muted)'>Chunk/source-grounded outputs</span></div>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar for document management
 with st.sidebar:
     st.header("📁 Document Management")
-    
+
+    st.subheader("🎨 Theme")
+    selected_theme = st.radio("Choose theme", ["Light", "Dark"], index=0 if st.session_state.get('theme_mode', 'Light') == 'Light' else 1, horizontal=True)
+    if selected_theme != st.session_state.get('theme_mode'):
+        st.session_state['theme_mode'] = selected_theme
+        st.rerun()
+
+    st.subheader("⚡ Performance")
+    fast_mode = st.checkbox("Enable Fast Mode (recommended)", value=True, help="Uses quick extractive summaries for much faster results on low-end machines.")
+    fast_image_mode = st.checkbox("⚡ Fast Image Mode (Prompt only)", value=False, help="If enabled, skips local image rendering and returns an instant prompt.")
+    default_top_k = 3 if fast_mode else 8
+
+    st.subheader("🔗 LinkedIn")
+    li_cfg = li_get_config()
+    if li_config_ready(li_cfg):
+        if st.session_state.get('li_auth_msg'):
+            st.caption(st.session_state['li_auth_msg'])
+        state = st.session_state.get('li_state') or li_new_state()
+        st.session_state['li_state'] = state
+        auth_url = li_build_auth_url(li_cfg, state)
+        st.link_button("Connect LinkedIn", auth_url, use_container_width=True)
+        if st.session_state.get('li_connected'):
+            st.success("Connected")
+
+            # Always-available sidebar post box (more reliable than tab button)
+            st.caption("LinkedIn Post (editable)")
+            li_draft = st.text_area(
+                "",
+                value=st.session_state.get('li_last_post', ''),
+                key='li_sidebar_draft',
+                height=120,
+                placeholder='Generate a LinkedIn post, edit here, then click Post Now'
+            )
+            if st.button("🚀 Post Now", key="sb_btn_li_post", use_container_width=True):
+                token = li_get_access_token()
+                if not token:
+                    st.error("Not connected. Click Connect LinkedIn again.")
+                elif not (li_draft or '').strip():
+                    st.error("Draft is empty. Generate/edit content first.")
+                else:
+                    res = li_post_text(token, li_draft.strip())
+                    if res.get('ok'):
+                        st.success("Posted successfully ✅")
+                    else:
+                        st.error(f"Post failed ({res.get('status')}): {res.get('body')}")
+        else:
+            st.info("Not connected")
+    else:
+        st.caption("Add LinkedIn credentials in .env")
+
     # Option 1: Upload files
     st.subheader("Upload Documents")
     uploaded_files = st.file_uploader(
@@ -213,10 +261,31 @@ with st.sidebar:
                     
                     # Copy store files (allow overwriting existing directory)
                     import shutil
+                    import stat
+                    import time
+
+                    def _on_rm_error(func, path, exc_info):
+                        # Windows: clear read-only and retry
+                        try:
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        except Exception:
+                            pass
+
                     if permanent_store.exists():
-                        shutil.rmtree(permanent_store)
+                        try:
+                            shutil.rmtree(permanent_store, onerror=_on_rm_error)
+                        except PermissionError:
+                            # If files are still locked, move old store aside and continue
+                            backup = Path(f"rag_store_old_{int(time.time())}")
+                            try:
+                                permanent_store.rename(backup)
+                                st.warning(f"Previous rag_store was locked; moved to {backup}.")
+                            except Exception:
+                                raise
+
                     shutil.copytree(store_dir, permanent_store)
-                    st.session_state['store_dir'] = str(permanent_store)
+                    st.session_state['store_dir'] = str(permanent_store.resolve())
                     progress_bar.progress(100)
                     
                     status_text.empty()
@@ -303,9 +372,9 @@ if st.session_state['store_loaded']:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            max_tokens_summary = st.slider("Max tokens", 128, 1024, 256, key="summary_tokens")
+            max_tokens_summary = st.slider("Max tokens", 256, 1024, 256, key="summary_tokens")
         with col2:
-            top_k_summary = st.number_input("Top K chunks", 1, 20, 5, key="summary_k")
+            top_k_summary = st.number_input("Top K chunks", 1, 20, default_top_k, key="summary_k")
         
         if st.button("✨ Generate Summary", key="btn_summary", type="primary"):
             with st.spinner("Generating summary from your documents..."):
@@ -326,7 +395,8 @@ if st.session_state['store_loaded']:
                         index=st.session_state['index'],
                         chunks=st.session_state['chunks'],
                         meta=st.session_state['meta'],
-                        encoder=st.session_state['encoder']
+                        encoder=st.session_state['encoder'],
+                        fast_mode=fast_mode
                     )
                     
                     st.markdown("### 📄 Generated Summary")
@@ -337,7 +407,10 @@ if st.session_state['store_loaded']:
                         if marker in answer:
                             answer = answer.split(marker)[-1].strip()
                             break
-                    st.markdown(f'<div style="background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; color: #212529; line-height: 1.6;">{answer}</div>', unsafe_allow_html=True)
+                    if fast_mode:
+                        st.markdown(answer)
+                    else:
+                        st.markdown(f'<div class="output-card">{answer}</div>', unsafe_allow_html=True)
                     
                     # Sources used (group by file, list chunk IDs) with emojis
                     retrieved = result["retrieved"]
@@ -367,9 +440,9 @@ if st.session_state['store_loaded']:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            max_tokens_blog = st.slider("Max tokens", 128, 1024, 512, key="blog_tokens")
+            max_tokens_blog = st.slider("Max tokens", 256, 1024, 256, key="blog_tokens")
         with col2:
-            top_k_blog = st.number_input("Top K chunks", 1, 20, 5, key="blog_k")
+            top_k_blog = st.number_input("Top K chunks", 1, 20, default_top_k, key="blog_k")
         
         if st.button("✨ Generate Blog Introduction", key="btn_blog", type="primary"):
             with st.spinner("Generating blog post introduction..."):
@@ -388,7 +461,8 @@ if st.session_state['store_loaded']:
                         index=st.session_state['index'],
                         chunks=st.session_state['chunks'],
                         meta=st.session_state['meta'],
-                        encoder=st.session_state['encoder']
+                        encoder=st.session_state['encoder'],
+                        fast_mode=fast_mode
                     )
                     
                     st.markdown("### 📝 Generated Blog Introduction")
@@ -399,7 +473,7 @@ if st.session_state['store_loaded']:
                         answer = answer.split("Blog Introduction:")[-1].strip()
                     elif "Answer:" in answer:
                         answer = answer.split("Answer:")[-1].strip()
-                    st.markdown(f'<div style="background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; color: #212529; line-height: 1.6;">{answer}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="output-card">{answer}</div>', unsafe_allow_html=True)
                     
                     with st.expander("📋 View Retrieved Chunks"):
                         for i, r in enumerate(result["retrieved"], 1):
@@ -415,9 +489,9 @@ if st.session_state['store_loaded']:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            max_tokens_linkedin = st.slider("Max tokens", 128, 512, 256, key="linkedin_tokens")
+            max_tokens_linkedin = st.slider("Max tokens", 256, 1024, 256, key="linkedin_tokens")
         with col2:
-            top_k_linkedin = st.number_input("Top K chunks", 1, 20, 5, key="linkedin_k")
+            top_k_linkedin = st.number_input("Top K chunks", 1, 20, default_top_k, key="linkedin_k")
         
         if st.button("✨ Generate LinkedIn Post", key="btn_linkedin", type="primary"):
             with st.spinner("Generating LinkedIn post..."):
@@ -436,7 +510,8 @@ if st.session_state['store_loaded']:
                         index=st.session_state['index'],
                         chunks=st.session_state['chunks'],
                         meta=st.session_state['meta'],
-                        encoder=st.session_state['encoder']
+                        encoder=st.session_state['encoder'],
+                        fast_mode=fast_mode
                     )
                     
                     st.markdown("### 💼 Generated LinkedIn Post")
@@ -447,10 +522,33 @@ if st.session_state['store_loaded']:
                         answer = answer.split("LinkedIn Post:")[-1].strip()
                     elif "Answer:" in answer:
                         answer = answer.split("Answer:")[-1].strip()
-                    st.markdown(f'<div style="background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; color: #212529; line-height: 1.6;">{answer}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="output-card">{answer}</div>', unsafe_allow_html=True)
                     
-                    st.info("💡 **Note:** Due to platform security policies, automatic posting to LinkedIn requires official APIs. You can manually copy and post this content.")
-                    
+                    # LinkedIn direct integration
+                    st.markdown("### 🔗 LinkedIn Posting")
+                    cfg = li_get_config()
+                    st.session_state['li_last_post'] = answer
+
+                    if li_config_ready(cfg):
+                        if st.button("🚀 Post to LinkedIn", key="btn_li_post"):
+                            token = li_get_access_token()
+                            if not token:
+                                st.error("LinkedIn not connected yet. Use 'Connect LinkedIn' from the sidebar first.")
+                            else:
+                                res = li_post_text(token, answer)
+                                if res.get('ok'):
+                                    st.success("✅ Posted to LinkedIn successfully.")
+                                else:
+                                    st.error(f"❌ LinkedIn post failed ({res.get('status')}): {res.get('body')}")
+                    else:
+                        st.info("Add LinkedIn credentials in .env to enable direct posting.")
+                        st.code(
+                            "LINKEDIN_CLIENT_ID=...\n"
+                            "LINKEDIN_CLIENT_SECRET=...\n"
+                            "LINKEDIN_REDIRECT_URI=http://localhost:8501",
+                            language="text"
+                        )
+
                     with st.expander("📋 View Retrieved Chunks"):
                         for i, r in enumerate(result["retrieved"], 1):
                             st.markdown(f"**Chunk {i}** (Score: {r['score']:.3f})")
@@ -465,14 +563,15 @@ if st.session_state['store_loaded']:
         
         col1, col2 = st.columns(2)
         with col1:
-            top_k_image = st.number_input("Top K chunks for image prompt", 1, 10, 3, key="image_k")
+            top_k_image = st.number_input("Top K chunks for image prompt", 1, 10, 2, key="image_k")
         with col2:
-            num_steps = st.slider("Inference steps", 10, 50, 20, key="image_steps")
+            num_steps = st.slider("Inference steps", 1, 8, 2, key="image_steps")
         
-        st.warning("⚠️ **Note:** Image generation requires significant GPU memory. First run will download the model (~4GB).")
+        st.warning("⚠️ **Note:** Image generation is heavy. If your device is slow, reduce inference steps (10-15) and keep Top K low.")
         
         if st.button("🎨 Generate Image", key="btn_image", type="primary"):
-            with st.spinner("Generating image from document context... This may take a few minutes."):
+            spin_msg = "Building instant image prompt..." if fast_image_mode else "Generating image from document context... This may take a few minutes."
+            with st.spinner(spin_msg):
                 try:
                     # Retrieve relevant chunks
                     question = "Generate an image related to this content"
@@ -482,21 +581,33 @@ if st.session_state['store_loaded']:
                         st.session_state['encoder'],
                         st.session_state['chunks'],
                         st.session_state['meta'],
-                        top_k=top_k_image
+                        top_k=top_k_image,
+                        use_reranker=not fast_mode
                     )
-                    
-                    # Generate image
-                    image, image_prompt = generate_image_from_context(
-                        retrieved,
-                        num_inference_steps=num_steps
-                    )
-                    
-                    st.markdown("### Generated Image")
-                    st.image(image, caption="AI-Generated Image from Document Context", use_container_width=True)
-                    
-                    st.markdown("### Image Prompt")
-                    st.code(image_prompt, language="text")
-                    
+
+                    if fast_image_mode:
+                        # Prompt-only mode (instant)
+                        context_preview = " ".join([r['chunk'][:180] for r in retrieved[:2]])
+                        context_preview = " ".join(context_preview.split())
+                        image_prompt = (
+                            "high quality professional illustration, clean composition, "
+                            "infographic style, " + context_preview[:260]
+                        )
+                        st.success("⚡ Fast Image Mode enabled: generated a ready-to-use prompt instantly.")
+                        st.markdown("### Prompt Used")
+                        st.code(image_prompt, language="text")
+                        st.caption("Use this prompt in any image tool (DALL·E, Midjourney, Leonardo, SD WebUI) for quick results.")
+                    else:
+                        # Generate image
+                        image, image_prompt = generate_image_from_context(
+                            retrieved,
+                            num_inference_steps=num_steps
+                        )
+
+                        st.markdown("### Generated Image")
+                        st.image(image, caption="AI-Generated Image from Document Context", use_container_width=True)
+                        # Keep prompt hidden by default for clean UX
+
                     with st.expander("📋 View Source Chunks"):
                         for i, r in enumerate(retrieved, 1):
                             st.markdown(f"**Chunk {i}** (Score: {r['score']:.3f})")
@@ -515,9 +626,9 @@ if st.session_state['store_loaded']:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            max_tokens_custom = st.slider("Max tokens", 128, 1024, 256, key="custom_tokens")
+            max_tokens_custom = st.slider("Max tokens", 256, 1024, 256, key="custom_tokens")
         with col2:
-            top_k_custom = st.number_input("Top K chunks", 1, 20, 5, key="custom_k")
+            top_k_custom = st.number_input("Top K chunks", 1, 20, default_top_k, key="custom_k")
         with col3:
             content_type_custom = st.selectbox("Content type", 
                                               ["general", "summary", "blog_intro", "linkedin_post"],
@@ -540,7 +651,8 @@ if st.session_state['store_loaded']:
                             index=st.session_state['index'],
                             chunks=st.session_state['chunks'],
                             meta=st.session_state['meta'],
-                            encoder=st.session_state['encoder']
+                            encoder=st.session_state['encoder'],
+                            fast_mode=fast_mode
                         )
                         
                         st.markdown("### 💡 Answer")
@@ -549,7 +661,7 @@ if st.session_state['store_loaded']:
                         answer = result.get("answer", "")
                         if "Answer:" in answer:
                             answer = answer.split("Answer:")[-1].strip()
-                        st.markdown(f'<div style="background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; color: #212529; line-height: 1.6;">{answer}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="output-card">{answer}</div>', unsafe_allow_html=True)
                         
                         with st.expander("📋 View Retrieved Chunks"):
                             for i, r in enumerate(result["retrieved"], 1):
@@ -591,9 +703,9 @@ else:
 # Footer
 st.divider()
 st.markdown("""
-<div style="text-align: center; color: #333333 !important; padding: 1rem; background-color: #f8f9fa; border-radius: 0.5rem; margin-top: 2rem;">
-    <p style="color: #333333 !important; margin: 0.5rem 0;">🤖 AI-Based Document Understanding and Content Generation System using RAG</p>
-    <p style="color: #666666 !important; margin: 0.5rem 0;">API-Free • Privacy-Friendly • Open Source</p>
+<div class="footer-card" style="text-align: center; padding: 1rem; margin-top: 2rem;">
+    <p style="margin: 0.5rem 0;">🤖 AI-Based Document Understanding and Content Generation System using RAG</p>
+    <p style="margin: 0.5rem 0; opacity:.82;">API-Free • Privacy-Friendly • Open Source</p>
 </div>
 """, unsafe_allow_html=True)
 
