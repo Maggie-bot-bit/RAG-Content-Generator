@@ -166,9 +166,9 @@ with st.sidebar:
         st.rerun()
 
     st.subheader("⚡ Performance")
-    fast_mode = st.checkbox("Enable Fast Mode (recommended)", value=True, help="Uses quick extractive summaries for much faster results on low-end machines.")
+    fast_mode = st.checkbox("Enable Fast Mode (recommended)", value=False, help="Quality mode default: keep OFF for better retrieval/generation quality.")
     fast_image_mode = st.checkbox("⚡ Fast Image Mode (Prompt only)", value=False, help="If enabled, skips local image rendering and returns an instant prompt.")
-    default_top_k = 3 if fast_mode else 8
+    default_top_k = 4 if fast_mode else 10
 
     st.subheader("🔗 LinkedIn")
     li_cfg = li_get_config()

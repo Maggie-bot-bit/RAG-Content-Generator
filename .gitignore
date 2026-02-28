@@ -9,3 +9,6 @@ rag_content_generator/rag_store/
 
 # Python cache
 __pycache__/
+rag_content_generator/.venv/
+rag_content_generator/eval_report.json
+.env

@@ -37,9 +37,9 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 # Light defaults; swap with larger local models if you have GPU/VRAM
-DEFAULT_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_EMBED_MODEL = "BAAI/bge-base-en-v1.5"  # quality-first embedding
 DEFAULT_RERANK_MODEL = "BAAI/bge-reranker-base"
-DEFAULT_LLM = "Qwen/Qwen2.5-0.5B-Instruct"
+DEFAULT_LLM = "Qwen/Qwen2.5-1.5B-Instruct"  # quality-first default
 DEFAULT_IMAGE_MODEL = "stabilityai/sd-turbo"
 
 # Lightweight in-process caches to avoid repeated model loading/log spam
@@ -49,12 +49,16 @@ _GENERATOR_CACHE = {}
 # Content type templates for different generation tasks
 CONTENT_TEMPLATES = {
     "summary": (
-        "Based on the following document context, write a SHORT summary in 2-4 sentences only.\n"
-        "- Describe what the document is and its purpose.\n"
-        "- Mention the key sections or topics covered (e.g., introduction, purpose, sample content, conclusion).\n"
-        "- Do NOT include source names, chunk numbers, [Source:...], or citation notes in your summary.\n"
-        "- Do NOT repeat information or add generic phrases like 'Additionally', 'Overall', 'By adhering to these guidelines'.\n"
-        "- Write in a clear, professional tone. Be concise like a document abstract.\n\n"
+        "Based on the following document context, write a clear, realistic summary in 3 short sections.\n"
+        "Format exactly as:\n"
+        "1) Overview (2-3 lines)\n"
+        "2) Key Points (3-6 bullet points, each unique)\n"
+        "3) Final Understanding (2-3 lines in your own words)\n\n"
+        "Rules:\n"
+        "- Use ONLY the provided context.\n"
+        "- Do NOT repeat the same point across lines or bullets.\n"
+        "- Do NOT include source tags, chunk IDs, or bracketed citations.\n"
+        "- Keep wording natural and concise, not robotic.\n\n"
         "Context:\n{context}\n\nSummary:"
     ),
     "blog_intro": (
@@ -95,9 +99,9 @@ def load_text_from_file(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
 
 
-def chunk_text(text: str, chunk_size: int = 350, overlap: int = 90) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 160, overlap: int = 60) -> List[str]:
     # Paragraph-aware chunking with sliding overlap for better retrieval quality
-    MAX_TEXT_LENGTH = 500000  # ~500K characters max
+    MAX_TEXT_LENGTH = 2000000  # ~2M characters max (preserve more document content)
     if len(text) > MAX_TEXT_LENGTH:
         text = text[:MAX_TEXT_LENGTH]
         print(f"Warning: Text truncated to {MAX_TEXT_LENGTH} characters to prevent memory issues")
@@ -108,7 +112,7 @@ def chunk_text(text: str, chunk_size: int = 350, overlap: int = 90) -> List[str]
 
     words: List[str] = []
     chunks: List[str] = []
-    MAX_CHUNKS = 1000
+    MAX_CHUNKS = 10000
 
     for para in paragraphs:
         p_words = para.split()
@@ -173,7 +177,7 @@ def build_store(docs_dir: str, store_dir: str, embed_model: str = DEFAULT_EMBED_
         raise FileNotFoundError(f"No text/PDF files found in {docs_dir}")
 
     # Check file sizes before processing
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB limit
+    MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB limit
     for f in files:
         file_size = f.stat().st_size
         if file_size > MAX_FILE_SIZE:
@@ -191,10 +195,10 @@ def build_store(docs_dir: str, store_dir: str, embed_model: str = DEFAULT_EMBED_
                 print(f"Warning: {f.name} appears to be empty, skipping...")
                 continue
             
-            # Limit text size before processing
-            if len(raw) > 500000:  # ~500K characters
-                print(f"Warning: {f.name} is very large, truncating to 500K characters...")
-                raw = raw[:500000]
+            # Limit text size before processing (raised to preserve more source content)
+            if len(raw) > 2000000:  # ~2M characters
+                print(f"Warning: {f.name} is very large, truncating to 2M characters...")
+                raw = raw[:2000000]
             
             cleaned = clean_text(raw)
             chunks = chunk_text(cleaned)
@@ -261,8 +265,8 @@ def load_store(store_dir: str):
     return index, chunks, meta, encoder
 
 
-def retrieve(query: str, index, encoder, chunks: List[str], meta: List[Tuple[str, int]], top_k: int = 8,
-             rerank_model: str = DEFAULT_RERANK_MODEL, candidate_multiplier: int = 6, use_reranker: bool = True):
+def retrieve(query: str, index, encoder, chunks: List[str], meta: List[Tuple[str, int]], top_k: int = 10,
+             rerank_model: str = DEFAULT_RERANK_MODEL, candidate_multiplier: int = 8, use_reranker: bool = True):
     # Stage 1: fast dense retrieval
     candidates_k = max(top_k, top_k * candidate_multiplier)
     q_emb = encoder.encode([query], convert_to_numpy=True, normalize_embeddings=True)
@@ -477,7 +481,41 @@ def fast_linkedin_post(retrieved: List[dict]) -> str:
     return f"{p1}\n\n{p2}\n\n{p3}\n\n{tags}"
 
 
-def run_query(question: str, store_dir: str = None, llm: str = DEFAULT_LLM, top_k: int = 8, max_tokens: int = 256, content_type: str = "general", 
+def _dedupe_text_lines(text: str) -> str:
+    """Remove repeated/near-repeated lines and repeated sentences to reduce summary duplication."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    kept = []
+    seen = set()
+
+    for ln in lines:
+        key = re.sub(r"\W+", " ", ln.lower()).strip()
+        key = " ".join(key.split()[:14])
+        if key and key not in seen:
+            seen.add(key)
+            kept.append(ln)
+
+    text2 = "\n".join(kept)
+
+    # Sentence-level pass for duplicated prose blocks
+    sents = re.split(r"(?<=[.!?])\s+", text2)
+    out_sents = []
+    seen_s = set()
+    for s in sents:
+        s = s.strip()
+        if not s:
+            continue
+        k = re.sub(r"\W+", " ", s.lower()).strip()
+        k = " ".join(k.split()[:16])
+        if k and k not in seen_s:
+            seen_s.add(k)
+            out_sents.append(s)
+
+    final = " ".join(out_sents)
+    final = re.sub(r"\s{2,}", " ", final).strip()
+    return final
+
+
+def run_query(question: str, store_dir: str = None, llm: str = DEFAULT_LLM, top_k: int = 10, max_tokens: int = 256, content_type: str = "general", 
               index=None, chunks=None, meta=None, encoder=None, fast_mode: bool = False):
     """Run RAG query with optional content type.
     
@@ -519,7 +557,8 @@ def run_query(question: str, store_dir: str = None, llm: str = DEFAULT_LLM, top_
         prompt,
         max_new_tokens=max_tokens,
         do_sample=False,
-        repetition_penalty=1.1,
+        repetition_penalty=1.22,
+        no_repeat_ngram_size=4,
         return_full_text=True,
     )[0]["generated_text"]
     
@@ -545,7 +584,11 @@ def run_query(question: str, store_dir: str = None, llm: str = DEFAULT_LLM, top_
     answer = re.sub(r'\[Source:[^\]]+\]', '', answer)
     answer = re.sub(r'\(Note:\s*Ensure proper citation[^)]*\)', '', answer, flags=re.IGNORECASE)
     answer = re.sub(r'\s{2,}', ' ', answer).strip()
-    
+
+    # Reduce repeated lines/sentences, especially for long summaries
+    if content_type in {"summary", "blog_intro", "linkedin_post", "general"}:
+        answer = _dedupe_text_lines(answer)
+
     return {"answer": answer, "retrieved": retrieved, "full_output": out}
 
 

@@ -1,0 +1,5 @@
+{"id": 1, "question": "What is the project objective?", "answer": "<exact objective from your document>", "keywords": ["objective", "traffic", "AI"], "content_type": "general"}
+{"id": 2, "question": "Which datasets are used and why?", "answer": "<dataset names and purpose>", "keywords": ["dataset", "Indian", "YOLO"], "content_type": "general"}
+{"id": 3, "question": "What model architecture is proposed?", "answer": "<model architecture details>", "keywords": ["YOLOv8", "stacking", "LSTM"], "content_type": "general"}
+{"id": 4, "question": "Summarize the implementation roadmap.", "answer": "<phase-wise summary>", "keywords": ["Phase 1", "Phase 2", "deployment"], "content_type": "summary"}
+{"id": 5, "question": "What are the success metrics?", "answer": "<technical and business metrics>", "keywords": ["mAP", "accuracy", "latency"], "content_type": "general"}
