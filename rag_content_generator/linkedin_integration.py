@@ -26,10 +26,28 @@ def _parse_env_file(path: Path = Path('.env')):
 
 def get_config():
     _parse_env_file()
+
+    client_id = os.getenv('LINKEDIN_CLIENT_ID', '')
+    client_secret = os.getenv('LINKEDIN_CLIENT_SECRET', '')
+    redirect_uri = os.getenv('LINKEDIN_REDIRECT_URI', '')
+
+    # Streamlit Cloud fallback: read from st.secrets when .env/env vars are absent
+    if not (client_id and client_secret and redirect_uri):
+        try:
+            import streamlit as st
+            client_id = client_id or st.secrets.get('LINKEDIN_CLIENT_ID', '')
+            client_secret = client_secret or st.secrets.get('LINKEDIN_CLIENT_SECRET', '')
+            redirect_uri = redirect_uri or st.secrets.get('LINKEDIN_REDIRECT_URI', '')
+        except Exception:
+            pass
+
+    if not redirect_uri:
+        redirect_uri = 'http://localhost:8501'
+
     return {
-        'client_id': os.getenv('LINKEDIN_CLIENT_ID', ''),
-        'client_secret': os.getenv('LINKEDIN_CLIENT_SECRET', ''),
-        'redirect_uri': os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:8501'),
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'redirect_uri': redirect_uri,
     }
 
 
